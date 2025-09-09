@@ -45,6 +45,6 @@ fn main() {
     
     let operacion = "+ 5";
     
-    
+    println!("{operacion}");
     
 }
