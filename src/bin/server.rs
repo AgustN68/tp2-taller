@@ -1,5 +1,5 @@
 use std::{io, thread};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::*;
 use std::sync::{Arc, Mutex};
 use crate::Error::OperacionInvalida;
@@ -42,7 +42,6 @@ impl Calculadora {
                 Ok(())
             },
             Operacion::Get() => {
-
                 Ok(()) },
         }
     }
@@ -68,7 +67,7 @@ impl Calculadora {
 enum Error {
     
     FaltaDireccion,
-    DireccionInvalida,
+    //DireccionInvalida,
     OperacionInvalida,
     DivisionPorCero,
 }
@@ -103,6 +102,7 @@ fn parsear_peticion_cliente(input: &str) -> Result<Operacion, Error> {
         return Err(OperacionInvalida);
     }
     let operacion = palabras[0];
+    println!("{operacion}");
     match operacion {
         "OP" => operacion_a_calculadora(palabras),
         "GET" => Ok(Operacion::Get()),
@@ -112,30 +112,50 @@ fn parsear_peticion_cliente(input: &str) -> Result<Operacion, Error> {
 
 fn manejar_cliente(mut stream: TcpStream, calculadora: Arc<Mutex<Calculadora>>) -> io::Result<()> {
     let mut buffer = [0; 1024];
-    let bytes = stream.read(&mut buffer)?;
-    let input = String::from_utf8_lossy(&buffer[0..bytes]);
-    println!("Recibido: {}",&input);
-    let operacion: Operacion = match parsear_peticion_cliente(&input){
-        Err(_) => eprintln!("Error al parsear operacion"),
 
-        Ok(op) => op,
-    };
-
-    let mut calc = match calculadora.lock() {
-        Ok(calc) => calc,
-        Err(e) => {
-            eprintln!("Error al lockear calculadora: {:?}", e);
-            return Ok(());
+    while let Ok(bytes) = stream.read(&mut buffer) {
+        if bytes == 0 {
+            println!("Cliente desconectado!");
+            stream.shutdown(Shutdown::Both)?;
+            break;
         }
-    };
-    calc.aplicar_operacion(operacion);
-    Ok(())
 
+        let input = String::from_utf8_lossy(&buffer[0..bytes]);
+        println!("Recibido: {}", &input);
+        let operacion: Operacion = match parsear_peticion_cliente(&input) {
+            Ok(op) => op,
+            Err(_) => {
+                eprintln!("Error al parsear operacion");
+                return Ok(());
+            },
+        };
+
+        let mut calc = match calculadora.lock() {
+            Ok(calc) => calc,
+            Err(e) => {
+                eprintln!("Error al lockear calculadora: {:?}", e);
+                return Ok(());
+            }
+        };
+
+        if operacion == Operacion::Get() {
+            let valor = calc.valor();
+            stream.write_all(valor.to_string().as_bytes())?;
+            continue;
+        }
+
+        match calc.aplicar_operacion(operacion) {
+            Ok(_) => stream.write_all(b"OK")?,
+            Err(Error::DivisionPorCero) => stream.write_all(b"DIV0")?,
+            Err(_) => stream.write_all(b"ERR")?,
+        }
+    }
+    Ok(())
 }
 
 fn crear_servidor(addres: &str, calculadora: Arc<Mutex<Calculadora>>) -> Result<(),io::Error>{
 
-    let listener = TcpListener::bind(&addres)?;
+    let listener = TcpListener::bind(addres)?;
 
     for stream in listener.incoming() {
         let stream = stream?;
@@ -161,24 +181,18 @@ fn main() {
             eprintln!("Falta la dirección");
             return;
         },
-        Err(Error::DireccionInvalida) => {
+        /*Err(Error::DireccionInvalida) => {
             eprintln!("Dirección invalida");
             return;
-        },
+        },*/
         Ok(addres) => addres,
         Err(Error::OperacionInvalida) | Err(Error::DivisionPorCero) => todo!(),
     };
 
-    let _ = match crear_servidor(&addres, calculadora) {
+    match crear_servidor(&addres, calculadora) {
         Ok(_) => (),
         Err(e) => {
             eprintln!("Error: {e}");
-            return;
         },
     };
-
-
-
-
-    
 }

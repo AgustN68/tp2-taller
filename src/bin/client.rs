@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 use std::net::*;
 
 fn main() -> Result<(),io::Error> {
@@ -13,7 +13,7 @@ fn main() -> Result<(),io::Error> {
     let addres = &args[1];
     let archivo = &args[2];
 
-    let mut stream = TcpStream::connect(&addres)?;
+    let mut stream = TcpStream::connect(addres)?;
     
     println!("Connectado al servidor!");
     
@@ -30,10 +30,15 @@ fn main() -> Result<(),io::Error> {
             }
         };
         
-        println!("Linea: {}",&linea);
+        println!("client : {}",&linea);
 
-        stream.write(linea.as_bytes())?;
+        stream.write_all(linea.as_bytes())?;
         stream.flush()?;
+
+        let mut buffer = [0; 1024];
+        let bytes = stream.read(&mut buffer)?;
+        let respuesta = String::from_utf8_lossy(&buffer[0..bytes]);
+        println!("server : {}",&respuesta);
     }
     
     Ok(())
