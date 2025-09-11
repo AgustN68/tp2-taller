@@ -1,3 +1,9 @@
+use std::{io, thread};
+use std::io::Read;
+use std::net::*;
+use crate::Error::OperacionInvalida;
+use crate::ParseError::FaltaDireccion;
+
 #[derive(PartialEq, Debug)]
 struct Calculadora {
     acumulador : u8
@@ -8,6 +14,7 @@ enum Operacion {
     Resta(u8),
     Multiplicacion(u8),
     Division(u8),
+    Get(),
 }
 impl Calculadora { 
     pub fn new() -> Self{
@@ -19,6 +26,7 @@ impl Calculadora {
             Operacion::Resta(valor) => self.restar(valor),
             Operacion::Multiplicacion(valor) => self.multiplicar(valor),
             Operacion::Division(valor) => self.dividir(valor),
+            _ => {}
         }
     }
     
@@ -40,11 +48,89 @@ impl Calculadora {
         self.acumulador
     }
 }
+enum Error {
+    FaltaDireccion,
+    DireccionInvalida,
+    OperacionInvalida,
+}
+fn parsear_argumentos() -> Result<String, Error> {
+    let mut entrada = std::env::args();
+    entrada.next();
+
+    let address = entrada.next().ok_or(Error::FaltaDireccion)?;
+    Ok(address)
+}
+
+fn operacion_a_calculadora(palabras: Vec<&str>) -> Result<Operacion, Error>{
+    if  {  }
+}
+
+fn parsear_peticion_cliente(input: &str) -> Result<Operacion, Error> {
+    let palabras: Vec<&str> = input.split_whitespace().collect();
+
+    if palabras.is_empty() {
+        return Err(OperacionInvalida);
+    }
+    let operacion = palabras[0];
+    match operacion {
+        "OP" => operacion_a_calculadora(palabras),
+        "GET" => Ok(Operacion::Get()),
+        _ => Err(Error::FaltaDireccion),
+    };
+}
+
+fn manejar_cliente(mut stream: TcpStream) -> io::Result<()> {
+    let mut buffer = [0; 1024];
+    let bytes = stream.read(&mut buffer)?;
+    let input = String::from_utf8_lossy(&buffer[0..bytes]);
+    println!("Recibido: {}",&input);
+    let operacion = parsear_peticion_cliente(&input)?;
+    Ok(())
+
+}
+
+fn crear_servidor(addres: &str) -> Result<(),io::Error>{
+    let listener = TcpListener::bind(&addres)?;
+
+    for stream in listener.incoming() {
+        let stream = stream?;
+        println!("Conexion establecida!");
+
+        thread::spawn(move || {
+            if let Err(e) = manejar_cliente(stream) {
+                eprintln!("Error en cliente: {}", e);
+            }
+        });
+    }
+    Ok(())
+
+}
+
 fn main() {
     let calculadora = Calculadora::new();
-    
-    let operacion = "+ 5";
-    
-    println!("{operacion}");
+
+    let addres = match parsear_argumentos() {
+        Ok(addres) => addres,
+        Err(Error::FaltaDireccion) => {
+            eprintln!("Falda la dirección");
+            return;
+        },
+        Err(Error::DireccionInvalida) => {
+            eprintln!("Dirección invalida");
+            return;
+        },
+    };
+
+    let _ = match crear_servidor(&addres) {
+        Ok(_) => (),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return;
+        },
+    };
+
+
+
+
     
 }
