@@ -1,5 +1,5 @@
 GET
-OP + 3
+OP + 6
 GET
-OP * 4
+OP / 0
 GET
