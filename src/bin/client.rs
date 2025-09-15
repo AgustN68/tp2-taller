@@ -15,7 +15,7 @@ fn main() -> Result<(), io::Error> {
 
     let mut stream = TcpStream::connect(addres)?;
 
-    println!("Connectado al servidor!");
+    // println!("Connectado al servidor!");
 
     let file = File::open(archivo)?;
     let reader = io::BufReader::new(file);
@@ -29,15 +29,29 @@ fn main() -> Result<(), io::Error> {
             }
         };
 
-        println!("client : {}", &linea);
-
-        stream.write_all(linea.as_bytes())?;
-        stream.flush()?;
-
+        //println!("client : {}", &linea);
+        if let Some(c) = linea.chars().next() {
+            match c {
+                '+' | '-' | '*' | '/' => {
+                    stream.write_all(format!("OP {}\n", linea).as_bytes())?;
+                    stream.flush()?;
+                }
+                _ => {
+                    stream.write_all(format!("{}\n", linea).as_bytes())?;
+                    stream.flush()?;
+                }
+            }
+        }
         let mut buffer = [0; 1024];
         let bytes = stream.read(&mut buffer)?;
-        let respuesta = String::from_utf8_lossy(&buffer[0..bytes]);
-        println!("server : {}", &respuesta);
+        let _ = String::from_utf8_lossy(&buffer[0..bytes]);
+        //println!("{}", &r);
     }
+    stream.write_all("GET\n".as_bytes())?;
+    stream.flush()?;
+    let mut buffer = [0; 1024];
+    let bytes = stream.read(&mut buffer)?;
+    let r = String::from_utf8_lossy(&buffer[0..bytes]);
+    println!("{}", &r);
     Ok(())
 }

@@ -1,17 +1,19 @@
-use crate::Error::{DivisionPorCero, OperacionInvalida};
+use crate::Error::{DivisionPorCero, MensajeInesperado, OperacionInvalida};
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::{io, thread};
 
+#[derive(Debug)]
 pub enum Error {
-    FaltaDireccion,
+    MensajeInesperado,
     OperacionInvalida,
     DivisionPorCero,
+    FaltaDireccion,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-enum Operacion {
+pub enum Operacion {
     Suma(u8),
     Resta(u8),
     Multiplicacion(u8),
@@ -24,16 +26,16 @@ pub struct Calculadora {
 }
 
 impl Default for Calculadora {
-     fn default() -> Self {
-         Self::new()
-     }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Calculadora {
     pub fn new() -> Self {
         Calculadora { acumulador: 0 }
     }
-    fn aplicar_operacion(&mut self, operacion: Operacion) -> Result<(), Error> {
+    pub fn aplicar_operacion(&mut self, operacion: Operacion) -> Result<(), Error> {
         match operacion {
             Operacion::Suma(valor) => {
                 self.sumar(valor);
@@ -111,11 +113,11 @@ fn parsear_peticion_cliente(input: &str) -> Result<Operacion, Error> {
         return Err(OperacionInvalida);
     }
     let operacion = palabras[0];
-    println!("{operacion}");
+
     match operacion {
         "OP" => operacion_a_calculadora(palabras),
         "GET" => Ok(Operacion::Get()),
-        _ => Err(OperacionInvalida),
+        _ => Err(MensajeInesperado),
     }
 }
 
@@ -124,24 +126,37 @@ fn manejar_cliente(mut stream: TcpStream, calculadora: Arc<Mutex<Calculadora>>) 
 
     while let Ok(bytes) = stream.read(&mut buffer) {
         if bytes == 0 {
-            println!("Cliente desconectado!");
             stream.shutdown(Shutdown::Both)?;
             break;
         }
 
-        let input = String::from_utf8_lossy(&buffer[0..bytes]);
+        let input = String::from_utf8_lossy(&buffer[0..bytes])
+            .trim()
+            .to_string();
         let operacion: Operacion = match parsear_peticion_cliente(&input) {
             Ok(op) => op,
             Err(OperacionInvalida) => {
-                stream.write_all(b"ERROR \"Operacion invalida\"")?;
+                stream.write_all(b"ERROR \"parsing error\"\n")?;
+                stream.flush()?;
+                eprintln!("ERROR \"parsing error\"");
                 continue;
             }
             Err(Error::FaltaDireccion) => {
-                stream.write_all(b"ERROR \"Falta direccion\"")?;
+                stream.write_all(b"ERROR \"Falta direccion\"\n")?;
+                stream.flush()?;
+                eprintln!("ERROR \"falta direccion\"");
                 continue;
             }
             Err(DivisionPorCero) => {
-                stream.write_all(b"ERROR \"Division por cero\"")?;
+                stream.write_all(b"ERROR \"division by zero\"\n")?;
+                stream.flush()?;
+                eprintln!("ERROR \"division by zero\"");
+                continue;
+            }
+            Err(MensajeInesperado) => {
+                stream.write_all(b"ERROR \"unexpected message\"\n")?;
+                stream.flush()?;
+                eprintln!("ERROR \"unexpected message\"");
                 continue;
             }
         };
@@ -156,24 +171,26 @@ fn manejar_cliente(mut stream: TcpStream, calculadora: Arc<Mutex<Calculadora>>) 
 
         if operacion == Operacion::Get() {
             let valor = calc.valor();
-            stream.write_all(valor.to_string().as_bytes())?;
+            stream.write_all(format!("{}", valor).as_bytes())?;
+            stream.flush()?;
             continue;
         }
 
         if calc.aplicar_operacion(operacion).is_ok() {
-            stream.write_all(b"OK")?
+            stream.write_all(b"OK")?;
+            stream.flush()?;
         }
     }
     Ok(())
 }
 
-pub fn crear_servidor(addres: &str, calculadora: Arc<Mutex<Calculadora>>) -> Result<(), io::Error> {
-    let listener = TcpListener::bind(addres)?;
-
+pub fn crear_servidor(
+    listener: TcpListener,
+    calculadora: Arc<Mutex<Calculadora>>,
+) -> Result<(), io::Error> {
     for stream in listener.incoming() {
         let stream = stream?;
         let calc = Arc::clone(&calculadora);
-        println!("Conexion establecida!");
 
         thread::spawn(move || {
             if let Err(e) = manejar_cliente(stream, calc) {

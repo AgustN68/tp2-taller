@@ -1,5 +1,1 @@
-GET
-OP + 6
-GET
-OP / 0
-GET
+OP + 2
